@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chrome fetch issue</title>
+  <style>
+    .block {
+      margin: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div>
+    <div>
+      <div class="block">
+        <!-- 选项，请求方式：fetch 或者 xhr -->
+        <radio-group>
+          Request Method
+          <label title="use window.fetch"><input type="radio" name="request" value="fetch" checked> fetch </label>
+          <label title="use XMLHttpRequest"><input type="radio" name="request" value="xhr"> xhr </label>
+          <label title="use <img />"><input type="radio" name="request" value="img">img</label>
+        </radio-group>
+      </div>
+
+      <div class="block">
+        <!-- 选项，响应头是否包含 Cache-Control: no-store -->
+        <radio-group>
+          Response Header Includes [Cache-Control: no-store]
+          <label><input type="radio" name="cache" value="Y" checked> Yes </label>
+          <label><input type="radio" name="cache" value="N"> No </label>
+        </radio-group>
+      </div>
+
+      <div class="block">
+        <!-- 选项，是否消耗请求响应数据 -->
+        <radio-group>
+          Consume Response Data
+          <label title="do read the response data"><input type="radio" name="consume" value="Y" checked> Yes </label>
+          <label title="no touching the response data"><input type="radio" name="consume" value="N"> No </label>
+        </radio-group>
+
+        <button id="doConsume" title="consume the latest response (window.currentResponse) manually" hidden>Manual
+          Consume</button>
+      </div>
+    </div>
+
+    <p>
+      <b>
+        Tip:
+        In Chrome browser, fetching a large file using the fetch method with a response header [cache-control: no-store]
+        without consuming data will cause network hanging (see devtools network panel time column). However, this is not
+        the case in Safari and Firefox.
+      </b>
+      <button id="try-it">try it</button>
+      <img src="./big-pic-network-time-pending.jpg" width="100%" />
+
+
+    </p>
+    <div class="block">
+      <button id="request-big-file"> request Big Image (4.8MB)</button>
+      <button id="request-small-file"> request Small Image (23KB)</button>
+    </div>
+
+    <div class="block">
+      <table border="1" cellpadding="10">
+        <tr>
+          <td>Browser</td>
+          <td>Chrome</td>
+          <td>Firefox</td>
+          <td>Safari</td>
+        </tr>
+        <tr>
+          <td>Version</td>
+          <td>107.0.5304.88</td>
+          <td>116.0.3</td>
+          <td>17.4.1</td>
+        </tr>
+        <tr>
+          <td>Pending</td>
+          <td>Yes</td>
+          <td>No</td>
+          <td>No</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <script>
+
+    document.getElementById('request-big-file').addEventListener('click', () => doFetch('big-pic.jpg'))
+    document.getElementById('request-small-file').addEventListener('click', () => doFetch('small-pic.jpg'))
+
+    document.getElementById('try-it').addEventListener('click', () => {
+      document.querySelector('input[name="request"][value="fetch"]').checked = true;
+      document.querySelector('input[name="cache"][value="Y"]').checked = true;
+      document.querySelector('input[name="consume"][value="N"]').checked = true;
+      doFetch('big-pic.jpg')
+      // doFetch('download?id=5204284&operateType=1')
+    })
+
+    let currentResponse = null,
+      consumeFn = null,
+      elDoConsume = document.getElementById('doConsume');
+
+    elDoConsume.addEventListener('click', () => {
+      elDoConsume.hidden = true;
+      consumeFn()
+      consumeFn = null
+    })
+
+    async function doFetch(url) {
+      elDoConsume.hidden = true;
+
+      const request = document.querySelector('input[name="request"]:checked').value;
+      const noStoreCache = document.querySelector('input[name="cache"]:checked').value === 'Y';
+      const consume = document.querySelector('input[name="consume"]:checked').value === 'Y';
+
+      if (noStoreCache) {
+        url += url.includes('?') ? '&no-store' :'?no-store'
+      }
+
+      switch (request) {
+        case 'fetch': {
+          const resp = currentResponse = await fetch(url);
+          console.log('fetch success, window.currentResponse = ', resp)
+          if (consume) {
+            consumeFetchFile(resp);
+          } else {
+            consumeFn = () => consumeFetchFile(resp);
+            elDoConsume.hidden = false;
+          }
+          break;
+        }
+        case 'xhr': {
+          const resp = currentResponse = xhr(url);
+          console.log('xhr success, window.currentResponse = ', resp)
+          if (consume) {
+            consumeXhrFile(resp);
+          } else {
+            consumeFn = () => consumeXhrFile(resp);
+            elDoConsume.hidden = false;
+          }
+          break;
+        }
+        case 'img': {
+          const img = loadImg(url, consume);
+          img.onload = () => console.log('img success', img)
+          break;
+        }
+      }
+    }
+
+    async function consumeFetchFile(response) {
+      const blob = await response.blob()
+      loadImg(URL.createObjectURL(blob));
+    }
+
+    function consumeXhrFile(xhr) {
+      xhr.responseType = 'blob';
+      xhr.onload = function () {
+        if (this.status === 200) {
+          loadImg(URL.createObjectURL(this.response));
+        }
+      };
+    }
+
+    function xhr(url) {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      setTimeout(() => xhr.send()) // bind onload before send if needed
+      return xhr
+    }
+
+    function loadImg(url, append = true) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.width = 200;
+      img.height = 200;
+      img.style = "margin: 10px 5px;"
+      if (append) {
+        setTimeout(() => document.body.appendChild(img)); // bind onload before send if needed
+      }
+      return img
+    }
+  </script>
+</body>
+
+</html>
